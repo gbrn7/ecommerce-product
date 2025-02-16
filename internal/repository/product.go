@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/pkg/errors"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
@@ -21,20 +20,9 @@ type ProductRepo struct {
 
 func (r *ProductRepo) InsertNewProduct(ctx context.Context, product *models.Product) error {
 	err := r.DB.Transaction(func(tx *gorm.DB) error {
-
 		err := tx.Create(product).Error
 		if err != nil {
 			return err
-		}
-
-		for i, variant := range product.ProductVariants {
-			variant.ProductID = product.ID
-			err := tx.Create(&variant).Error
-			if err != nil {
-				return errors.Wrap(err, fmt.Sprintf("failed to input variant: %+v", variant))
-			}
-			product.ProductVariants[i].ID = variant.ID
-			product.ProductVariants[i].ProductID = product.ID
 		}
 
 		return nil
@@ -45,18 +33,17 @@ func (r *ProductRepo) InsertNewProduct(ctx context.Context, product *models.Prod
 			ctx := context.Background()
 			jsonData, err := json.Marshal(product)
 			if err != nil {
-				helpers.Logger.Warn("failed to marshal the product for cache", err)
+				helpers.Logger.Warn("failed to marshal the product for cache: ", err)
 				return
 			}
+
 			if err := r.Redis.Del(ctx, constants.RedisKeyProducts).Err(); err != nil {
 				helpers.Logger.Warn("failed to delete redis with key: ", constants.RedisKeyProducts, err)
 			}
 			if err := r.Redis.Set(ctx, fmt.Sprintf(constants.RedisKeyProductsDetail, product.ID), string(jsonData), time.Hour*24).Err(); err != nil {
-				helpers.Logger.Warn("failed to delete redis with key: ", fmt.Sprintf(constants.RedisKeyProductsDetail, product.ID), err)
+				helpers.Logger.Warn("failed to insert redis with key: ", fmt.Sprintf(constants.RedisKeyProductsDetail, product.ID), err)
 			}
-
 		}()
-
 	}
 
 	return err
